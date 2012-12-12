@@ -1,0 +1,837 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>Chapter 6: Document Filtering (Page 117)</title><meta name="generator" content="MATLAB 7.13"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2012-12-11"><meta name="DC.source" content="classification.m"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>Chapter 6: Document Filtering (Page 117)</h1><!--introduction--><p>"Programming Collective Intelligence - Building Smart Web 2.0 Applications" by Toby Segaran (O'Reilly Media, ISBN-10: 0-596-52932-5)</p><p>This chapter shows how to classify documents based on their contents as an application of machine learning. A familiar application of such techniques is spam filtering. This problem began with e-mails, but it has now spread to blogs, message boards, Wiki's, and social networking sites like MySpace and Facebook in a form of spam posts, comments and messages. This is the dark side of the Web 2.0.</p><p>However, the techniques are not limited to spam for application. The algorithms are broad enough to accommodate other applications, because it is about learning to recognize whether a document belongs in one category or another based on its content.</p><p>In the world of marketing I live in, we also gets a lot of junk leads as we move our lead generation activities to online. We would use online forms to try to gather data, but your target may try to bypass the forms by providing fake data in order to get the fulfillment. It would be very useful to automatically sort out the junk.</p><p>In this chapter I will also take advantage of a new MATLAB feature in R2008a called object-oriented programming (OOP).</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">Documents and Words (Page 118)</a></li><li><a href="#2">Training the Classifier (Pages 119-121)</a></li><li><a href="#3">Calculating Probabilities (Pages 121-122)</a></li><li><a href="#4">Starting with a Reasonable Guess (Pages 122-123)</a></li><li><a href="#5">A Naive Classifier - Probability of a Whole Document (Pages 123-124)</a></li><li><a href="#6">A Quick Introduction to Bayes' Theorem (Pages 125-126)</a></li><li><a href="#7">Choosing a Category (Pages 126-127)</a></li><li><a href="#8">The Fisher Method - Category Probabilities for Features (Pages 127-129)</a></li><li><a href="#9">Combining the Probabilities (Pages 129-130)</a></li><li><a href="#10">Classifying Items (Pages 130-131)</a></li><li><a href="#11">Persisting the Trained Classifiers (Pages 132-133)</a></li><li><a href="#12">Filtering Blog Feeds - interactive training (Pages 134-135)</a></li><li><a href="#13">Filtering Blog Feeds - the training results (Page 136)</a></li><li><a href="#14">Improving Feature Detection (Pages 136-138)</a></li><li><a href="#15">Using Akismet (Pages 138-139)</a></li><li><a href="#16">Alternative Methods (pages 139-140)</a></li></ul></div><h2>Documents and Words (Page 118)<a name="1"></a></h2><p>The task of classifying documents requires some kind of features to distinguish one document over another. A feature is anything that you can determine as being either present or absent in the document, and in our case words in documents are the logical choice for such features. Assumption is that frequency of word appearance is different based on document type. For example, certain words are more likely to appear in spam than non-spam.</p><p>Of course, features could be word pairs or phrases, or any other higher or lower document structures that can be either present or absent. In this case, we will focus on words.</p><p>'getwords' function extracts words larger than 2 letters but less than 20 into a cell array using regular expression. The text is divided by non-alphabetic character, so this doesn't work with Japanese text. Words are converted to lowercase.</p><p>This is not a perfect solution, because spam often uses capitalized letters and non-alphabetic characters for emphasis, and we are not capturing these features in 'getwords'. So we need to leave room for improvement when we write the classification routine by easily substituting with different feature extraction techniques.</p><pre class="codeinput">test=<span class="string">'This is just a test %*$![]'</span>;
+disp([<span class="string">'test sample='''</span> test <span class="string">''';'</span>])
+disp(<span class="string">'Extract features using ''getwords'' function'</span>)
+disp(getwords(test))
+clear <span class="string">all</span>;
+</pre><pre class="codeoutput">test sample='This is just a test %*$![]';
+Extract features using 'getwords' function
+    'this'
+    'just'
+    'test'
+
+</pre><h2>Training the Classifier (Pages 119-121)<a name="2"></a></h2><p>The classifiers discussed in this chapter learn how to classify a document by being trained. The more examples of documents and their correct classifications it sees, the better the classifier will get at making predictions with increasing certainty.</p><p>Here, the classifier is implemented as a user-defined MATLAB class, taking advantage of the new feature in R2008a. Classes act as templates. We may want to classify different documents by different criteria, and we can write separate programs for them, but by using template approach, we can use one template that can be used to create individual cases of classifiers for each situation. These individual cases are called 'instances' or 'objects' in OOP. We can create different instances of the classifier class or template and train them differently to have them serve different purposes.</p><p>Make sure you use 'handle' superclass declaration in class definition - this is the key feature that enables self-referencing behavior for your user-defined classes. This key feature is not well documented in MATLAB documentation, so it took me a while to figure this out.</p><p>'classifier' class has 3 built-in properties. 'fc' stands for 'feature count' and it keeps track of different features in different categories of classification. 'cc' stands for 'category count' and it keeps track of how many times each category has been used. The last property, 'getfeatures', store the function handle to a feature-extraction function. Default is '@getwords'. The class also defines the methods you can use to construct an object or instance, or manipulate it in various ways. 'train' and 'fcount' are examples of those methods.</p><p>'train' method provides the initial training for classifier object by supplying a sample text and its category. 'fcount' gives you the count of given feature in a given category acquired through training.</p><pre class="codeinput">cl=classifier(); <span class="comment">% create an instance or object from 'classifier' class</span>
+text1=<span class="string">'the quick brown fox jumps over the lazy dog'</span>;
+text2=<span class="string">'make quick money in the online casino'</span>;
+disp([<span class="string">'training sample1='''</span> text1 <span class="string">''';'</span>])
+disp([<span class="string">'training sample2='''</span> text2 <span class="string">''';'</span>])
+cl.train(text1,<span class="string">'good'</span>); <span class="comment">% train the classifier object 'cl' with sample text.</span>
+cl.train(text2,<span class="string">'bad'</span>); <span class="comment">% more training, with a bad example.</span>
+<span class="comment">% the word 'quick appeared once on both, so it should have a count of 1</span>
+<span class="comment">% in each category</span>
+disp(<span class="string">' '</span>)
+disp(sprintf(<span class="string">'Count of ''quick'' classifed as ''good''=%d'</span>,cl.fcount(<span class="string">'quick'</span>, <span class="string">'good'</span>)))
+disp(sprintf(<span class="string">'Count of ''quick'' classifed as ''bad''=%d'</span>,cl.fcount(<span class="string">'quick'</span>, <span class="string">'bad'</span>)))
+</pre><pre class="codeoutput">training sample1='the quick brown fox jumps over the lazy dog';
+training sample2='make quick money in the online casino';
+ 
+Count of 'quick' classifed as 'good'=1
+Count of 'quick' classifed as 'bad'=1
+</pre><h2>Calculating Probabilities (Pages 121-122)<a name="3"></a></h2><p>Now that we know how many features a given category has and frequency of each feature, you can now calculate the probability of a word being in a particular category... Pr(word|category). This is implemented as a class method 'fprob'.</p><p>We also have to re-train the object as we develop the algorithm, so we should automate the training process - that's what 'sampletrain' does.</p><p>The sample texts it feeds are:</p><div><ul><li>'Nobody owns the water.' -&gt; good</li><li>'the quick rabbit jumps fences' -&gt;good</li><li>'buy pharmaceuticals now' -&gt; bad</li><li>'make quick money at the online casino' -&gt; bad</li><li>'the quick brown fox jumps' -&gt; good</li></ul></div><p>'quick' appears 3 times and 2 are good and 1 bad. So the probability of 'quick' appearing in 'good' documents should be 2/3=0.6666666..</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''classifier'' object'</span>)
+cl=classifier(); <span class="comment">% reset the object by re-creating it.</span>
+sampletrain(cl); <span class="comment">% feed the standard training data</span>
+format=<span class="string">'Probability of ''quick'' appearing in ''good'' documents=%f'</span>;
+disp(sprintf(format,cl.fprob(<span class="string">'quick'</span>,<span class="string">'good'</span>)))
+</pre><pre class="codeoutput"> 
+Reset the 'classifier' object
+Probability of 'quick' appearing in 'good' documents=0.666667
+</pre><h2>Starting with a Reasonable Guess (Pages 122-123)<a name="4"></a></h2><p>'fprob' gives exact prediction based on training data, but that's also its limitation - its prediction is good only for training data. Its prediction is incredibly sensitive to the training data it received. For example, the word 'money' only appeared once in a bad example, so its probability is 100% for bad documents, 0% for good documents. This is too extreme, because 'money' could be used in good documents as well.</p><p>To address this issue, we would like to introduce a concept of 'assumed probability' ('ap') that new features take on initially, and then adjusted gradually in training. '0.5' is a good neutral probability to start with. Next thing to think about is how much weight you would like to give to 'ap'. Weight of 1 means it is worth one word in actual samples. The new metric is the weighted average of probability returned from 'fprob' and 'ap'.</p><p>For the case of 'money', its 'ap' is '0.5' initially for both 'good' and 'bad'. Then the classifier object finds 1 example of 'money' in a 'bad' document in the training. So its probability for 'bad' becomes:</p><div><ul><li>(weight x ap + count x fprob)/(count + weight)</li><li>= (1x0.5+1*1)/(1+1)</li><li>= 0.75</li></ul></div><p>This means that its probability for 'good' will be '0.25'.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''classifier'' object'</span>)
+cl=classifier();
+sampletrain(cl);
+format=<span class="string">'Probability of ''money'' appearing in ''good'' documents=%f'</span>;
+disp(<span class="string">'Run the weighted probability calculation... '</span>)
+disp(<span class="string">' '</span>)
+disp(sprintf(format,cl.weightedprob(<span class="string">'money'</span>,<span class="string">'good'</span>,@cl.fprob)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Repeat the training - this should increase certainty'</span>)
+disp(<span class="string">' '</span>)
+sampletrain(cl);
+disp(sprintf(format,cl.weightedprob(<span class="string">'money'</span>,<span class="string">'good'</span>,@cl.fprob)))
+</pre><pre class="codeoutput"> 
+Reset the 'classifier' object
+Run the weighted probability calculation... 
+ 
+Probability of 'money' appearing in 'good' documents=0.250000
+ 
+Repeat the training - this should increase certainty
+ 
+Probability of 'money' appearing in 'good' documents=0.166667
+</pre><h2>A Naive Classifier - Probability of a Whole Document (Pages 123-124)<a name="5"></a></h2><p>We now have a way to calculate Pr(word|category), which gives us the probabilities of a document in a category containing a particular word, but we need a way to combine the individual word probabilities to get the probability that an entire document belongs in a given category.</p><p>Here we will implement one approach called a naive Bayesian classifier. It is called 'naive' because it assumed that the probabilities being combined are independent of each other. In the case of spam, we know that 'money' and 'casino' are much more highly correlated than other combinations, so this is not a good assumption. While we cannot use the probabilities given by a naive Bayesian classifier per se, we can still use its results relatively for comparison among different categories. Therefore it is still an effective approach in real life despite its flaw in the assumption.</p><p>If all features are independent, then we can combine their probabilities by multiplying them together. Let's take an example of words 'MATLAB' and 'Casino', and their probabilities to appear in bad documents are as follows:</p><div><ul><li>Pr(matlab|bad)=20%</li><li>Pr(casino|bad)=80%</li></ul></div><p>The probability that both 'MATLAB' and 'Casino' should appear in bad documents is 16%.</p><div><ul><li>Pr(matlab&amp;casino|bad)= 20%x80%=16%</li></ul></div><p>So we can get the probabilities for the whole document by multiplying the probabilities of all features contained in the document.</p><p>We will create a different subclass of 'classifier' to add this capability. This subclass is called 'naivebayes' which implements 'docprob' method.</p><p>Let's test with some sample data. Please remember that the result won't be exactly 16% because we are using weighted average here.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the object with ''naivebayes'''</span>)
+cl=naivebayes();
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Training ''naivebayes'' object with 80% good ''MATLAB'' &amp; 80% bad ''Casino''...'</span>)
+cl.fc={<span class="string">'matlab'</span>,<span class="string">'good'</span>,80;<span class="string">'matlab'</span>,<span class="string">'bad'</span>,20; <span class="string">'casino'</span>,<span class="string">'good'</span>,20;<span class="string">'casino'</span>,<span class="string">'bad'</span>,80};
+cl.cc={<span class="string">'good'</span>,100;<span class="string">'bad'</span>,100};
+format=<span class="string">'Probability of ''matlab casino'' as a ''good'' document=%f'</span>;
+disp(sprintf(format,cl.docprob(<span class="string">'matlab casino'</span>,<span class="string">'good'</span>)))
+</pre><pre class="codeoutput"> 
+Reset the object with 'naivebayes'
+ 
+Training 'naivebayes' object with 80% good 'MATLAB' &amp; 80% bad 'Casino'...
+Probability of 'matlab casino' as a 'good' document=0.161773
+</pre><h2>A Quick Introduction to Bayes' Theorem (Pages 125-126)<a name="6"></a></h2><p>Now that we know how to calculate Pr(document|category), we need to flip it around to get Pr(category|document) in order to classify new documents. That's what Bayes' Theorem is about.</p><div><ul><li>Pr(A|B)=Pr(B|A)xPr(A)/Pr(B)</li></ul></div><p>Or, in our case,</p><div><ul><li>Pr(category|document)=Pr(document|category)xPr(category)/Pr(document)</li></ul></div><p>Pr(document|category) is given by 'docprob'. Pr(category) is just the number of documents in the category divided by total number of documents. Pr(document) is irrelevant in our case. Because of the basic flaw in our naive Bayesian approach, we are not going to use resulting probabilities directly. Instead we will calculate probability for each category separately, and then all the results will be compared. Pr(document) is the same for each of those separate calculations, so we can safely ignore this term.</p><p>'prob' method calculates the probability of each category and returns the product Pr(document|category) x Pr(category).</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''naivebayes'' object'</span>)
+cl=naivebayes();
+sampletrain(cl);
+format=<span class="string">'Probability of ''quick rabbit'' as a ''good'' document=%f'</span>;
+disp(sprintf(format,cl.prob(<span class="string">'quick rabbit'</span>,<span class="string">'good'</span>)))
+format=<span class="string">'Probability of ''quick rabbit'' as a ''bad'' document=%f'</span>;
+disp(sprintf(format,cl.prob(<span class="string">'quick rabbit'</span>,<span class="string">'bad'</span>)))
+</pre><pre class="codeoutput"> 
+Reset the 'naivebayes' object
+Probability of 'quick rabbit' as a 'good' document=0.156250
+Probability of 'quick rabbit' as a 'bad' document=0.050000
+</pre><h2>Choosing a Category (Pages 126-127)<a name="7"></a></h2><p>The final step in classification is to determine the category a new document belongs in. The simple approach is to assign it to the category with highest probability. However, in reality, this may not be a desirable behavior. You don't want to misplace non-spam as spam just because the probability is marginally higher. So we need to assign a minimum threshold for each category, so that new item can be placed there only when the probability is higher than the next best by a specified threshold.</p><p>For example, the threshold for 'bad' could be set to '3', while it could be '1' for 'good'. This means any item with highest 'good' probability, however small the difference may be, will be classified as 'good', while only items with 3 times higher 'bad' probability than others will be classified as 'bad', and anything inbetween is 'unknown'.</p><p>We need to modify 'classifier' class to add 'thresholds' property and 'classify' method to implement this approach. The changes will also be inherited by 'naivebayes' subclass automatically, so you don't have to do anything with that subclass. This is the power of OOP.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''naivebayes'' object'</span>)
+cl=naivebayes();
+sampletrain(cl);
+format=<span class="string">'Bayes classify ''quick rabbit''... Category=%s'</span>;
+disp(sprintf(format,cl.classify(<span class="string">'quick rabbit'</span>,<span class="string">'unknown'</span>)))
+format=<span class="string">'Bayes classify ''quick money''... Category=%s'</span>;
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Set the threshold for ''bad'' to ''3.0'''</span>)
+cl.setthreshold(<span class="string">'bad'</span>,3.0);
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Run the ''sampletrain'' 10 times'</span>)
+<span class="keyword">for</span> i=1:10
+    sampletrain(cl);
+<span class="keyword">end</span>
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+clear <span class="string">all</span>;
+</pre><pre class="codeoutput"> 
+Reset the 'naivebayes' object
+Bayes classify 'quick rabbit'... Category=good
+Bayes classify 'quick money'... Category=bad
+ 
+Set the threshold for 'bad' to '3.0'
+Bayes classify 'quick money'... Category=unknown
+ 
+Run the 'sampletrain' 10 times
+Bayes classify 'quick money'... Category=bad
+</pre><h2>The Fisher Method - Category Probabilities for Features (Pages 127-129)<a name="8"></a></h2><p>Here we will examine the Fisher Method, named for R.A. Fisher, as an alternative approach in document filtering. This method is used in SpamBayes, an Outlook plugin written in Python, and known to be particularly effective for spam filtering.</p><p>In a naive Bayesian approach, we used the feature probabilities to determine the whole document probability. The Fisher Method is more elaborate, but it is worth learning because it offers much greater flexibility.</p><p>In the Fisher Method, you start by calculating the probability of a document being in a category given the presence of a particular feature - Pr(category|feature). If 'casino' appears in 500 documents and 499 of those are in the 'bad' category, then 'casino' will score very close to 1 for 'bad'.</p><div><ul><li>Pr(category|feature)= (number of documents in this category with the feature)/(total number of documents with the feature)</li></ul></div><p>However, this formula doesn't account for imbalance of data among different categories. If most of your documents are good except a few bad ones, the features associated with bad ones will score too high for 'bad', even though they may be perfectly legitimate words. So we need to normalize the probability calculation. Required information is:</p><div><ul><li>clf=Pr(feature|category) for a given category</li><li>freqsum = sum of Pr(feature|category) for all the categories</li><li>cprob=clf/(clf+nclf)</li></ul></div><p>If you run the following code, you will see that 'money' returns 1.0 probability for 'bad'. Again, it is too sensitive to the training data. We should use weighted average approach again with the Fisher Method.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the object with ''fisherclassifier'''</span>)
+cl=fisherclassifier();
+sampletrain(cl);
+format=<span class="string">'Probability of ''quick'' as a ''good'' document=%f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'quick'</span>,<span class="string">'good'</span>)))
+format=<span class="string">'Probability of ''money'' as a ''bad'' document=%f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'money'</span>,<span class="string">'bad'</span>)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Use weighted average rather than cprob directly'</span>)
+disp(sprintf(format,cl.weightedprob(<span class="string">'money'</span>,<span class="string">'bad'</span>,@cl.cprob)))
+</pre><pre class="codeoutput"> 
+Reset the object with 'fisherclassifier'
+Probability of 'quick' as a 'good' document=0.571429
+Probability of 'money' as a 'bad' document=1.000000
+ 
+Use weighted average rather than cprob directly
+Probability of 'money' as a 'bad' document=0.750000
+</pre><h2>Combining the Probabilities (Pages 129-130)<a name="9"></a></h2><p>In our naive Bayesian approach we combined the feature probabilities by multiplying them to derive an overall document probability. The Fisher Method add rigor to this process by applying additional steps to test the multiplication result.</p><p>Fisher's research shows that if you take a natural log of the result and multiplying it by -2, then the resulting score should fit a chi-squared distribution if the probabilities are independent and random. We can use this knowledge this way: if a document doesn't belong in a particular category, its feature probabilities vary randomly for that category. If a document belongs in another category, its feature probabilities should be high in general - no longer random.</p><p>By feeding the result of the Fisher calculation to the inverse chi-square function, you get the probability that a random set of probabilities would return such a high number. For further reading, check out: <a href="http://www.gigamonkeys.com/book/practical-a-spam-filter.html">http://www.gigamonkeys.com/book/practical-a-spam-filter.html</a></p><p>By the way, I made a small change to 'invchi2' function:</p><div><ul><li>Python: for i in range(1, df//2)</li><li>MATLAB: for i=1:floor(df/2)-1</li></ul></div><p>'//' is an integer division operator, an equivalent to 'floor' in MATLAB. 'range(1,2)' returns '[1]', not [1 2] in Python, however - the second end-of-range argument is not included in the resulting vector. So I had to add '-1' in order to make MATLAB version to behave the same as Python version. I am not sure if this is strictly Kosher from  Statistics point of view.</p><p>Anyhow, we can see that the Fisher Method is more sophisticated and robust than our naive Bayesian alternative, and therefore it is expected to perform better.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''fisherclassifier'' object'</span>)
+cl=fisherclassifier();
+sampletrain(cl);
+format=<span class="string">'''cprob'' of ''quick'' as a ''good'' document=%f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'quick'</span>,<span class="string">'good'</span>)))
+format=<span class="string">'''fisherprob'' of ''quick rabbit'' as a ''good'' document=%f'</span>;
+disp(sprintf(format,cl.fisherprob(<span class="string">'quick rabbit'</span>,<span class="string">'good'</span>)))
+format=<span class="string">'''fisherprob'' of ''quick rabbit'' as a ''bad'' document=%f'</span>;
+disp(sprintf(format,cl.fisherprob(<span class="string">'quick rabbit'</span>,<span class="string">'bad'</span>)))
+</pre><pre class="codeoutput"> 
+Reset the 'fisherclassifier' object
+'cprob' of 'quick' as a 'good' document=0.571429
+'fisherprob' of 'quick rabbit' as a 'good' document=0.780140
+'fisherprob' of 'quick rabbit' as a 'bad' document=0.356336
+</pre><h2>Classifying Items (Pages 130-131)<a name="10"></a></h2><p>Because 'fisherprob' returns a probability value pre-qualified by inverse chi-square function, we can use it directly in classification, rather than having multiplication thresholds like our naive Bayesian classifier. Instead, we will specify the minimums for each classification. For a spam filter, you may want to set this minimum high for 'bad', such as '0.6', while the minimum for 'good' can be as low as '0.2', in order to avoid accidental misplacement of good e-mails in the 'bad' category. Anything lower than the minimums will be classified as 'unknown'.</p><p>The result we will see may be not much different from the output of our naive Bayesian classifier, because of the small training dataset, but The Fisher Method is believed to outperform in real world situations.</p><pre class="codeinput">disp(<span class="string">' '</span>)
+disp(<span class="string">'Reset the ''fisherclassifier'' object'</span>)
+cl=fisherclassifier();
+sampletrain(cl);
+format=<span class="string">'Fisher classify ''quick rabbit''... Category=%s'</span>;
+disp(sprintf(format,cl.classify(<span class="string">'quick rabbit'</span>,<span class="string">'unknown'</span>)))
+format=<span class="string">'Fisher classify ''quick money''... Category=%s'</span>;
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Set the minumum for ''bad'' to ''0.8'''</span>)
+cl.setminimum(<span class="string">'bad'</span>,0.8);
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+disp(<span class="string">' '</span>)
+disp(<span class="string">'Set the minumum for ''good'' to ''0.4'''</span>)
+cl.setminimum(<span class="string">'good'</span>,0.4);
+disp(sprintf(format,cl.classify(<span class="string">'quick money'</span>,<span class="string">'unknown'</span>)))
+</pre><pre class="codeoutput"> 
+Reset the 'fisherclassifier' object
+Fisher classify 'quick rabbit'... Category=good
+Fisher classify 'quick money'... Category=bad
+ 
+Set the minumum for 'bad' to '0.8'
+Fisher classify 'quick money'... Category=good
+ 
+Set the minumum for 'good' to '0.4'
+Fisher classify 'quick money'... Category=good
+</pre><h2>Persisting the Trained Classifiers (Pages 132-133)<a name="11"></a></h2><p>The book covers the process of adapting the 'classifier' class to work with SQLite light-weight, serverless database. Python 2.5 or later comes with SQlite built-in. It is used widely in desktop applications as well as small embedded applications. See <a href="http://www.sqlite.org/">http://www.sqlite.org/</a> for more information.</p><p>So far, the classifiers we created need to be trained each time before you can use them, and you need to repeat this process each time you start up a session in MATLAB, because we haven't provided a way to persist the data or object. In MATLAB, you can actually save the whole classifier objects in .mat file. Python doesn't provide such functionality built-in, so it makes sense to provide native support to SQLite precisely for this reason.</p><p>There is a nice library called <a href="http://mksqlite.berlios.de/mksqlite_eng.html">mksqlite</a> that connects MATLAB to SQLite. "classifer2.m" shows the modified classifier that uses mksqlite to persist the trained object.</p><p>Here is the simple script to test the modified classifier.</p><pre class="codeinput"><span class="comment">% text1='the quick brown fox jumps over the lazy dog';</span>
+<span class="comment">% text2='make quick money in the online casino';</span>
+<span class="comment">%</span>
+<span class="comment">% cl=classifier2();</span>
+<span class="comment">% cl.setdb('test1.db');</span>
+<span class="comment">% cl.train(text1, 'good');</span>
+<span class="comment">% cl.train(text2, 'bad');</span>
+<span class="comment">%</span>
+<span class="comment">% disp(sprintf('Count of ''quick'' classified as ''good''=%d', cl.fcount('quick', 'good')))</span>
+<span class="comment">% disp(sprintf('Count of ''quick'' classified as ''bad''=%d,   cl.fcount('quick', 'bad')))</span>
+<span class="comment">% mksqlite(cl.con, 'close');</span>
+<span class="comment">%</span>
+<span class="comment">% clear all</span>
+</pre><h2>Filtering Blog Feeds - interactive training (Pages 134-135)<a name="12"></a></h2><p>As a non-spam related application of the classifiers we created, the book introduces a program that filters RSS feeds from various blogs. RSS was one of the important drivers for Web 2.0, but it now floods the cyberspace, overwhelming people with too much information to process.</p><p>It takes advantage of a RSS parsing library called 'Universal Feed Parser' to build the documents to feed to the classifier, present the text to the user with a guess, then asks for a user input for correct answer. You can pick from multiple categories beyond 'good' or 'bad'. This user input is then used for training.</p><p>Since there is no 'Universal Feed Parser' for MATLAB, I wrote a very simple code inside 'feedfilter' function. It only works with the sample XML file provided here 'python_search.xml' or any RSS feed that follows its format exactly. It doesn't work with other RSS feed formats.</p><p>I improved the usability a bit - you can simply accept a guess by hitting return without entering text. You can also end the session by entering 'end' at the prompt at any time. As you go through the training, you will notice that the guesses get better and better.</p><pre class="codeinput"><span class="comment">% Test 'feedfilter' function</span>
+<span class="comment">% cl=fisherclassifier();</span>
+<span class="comment">% feedfilter(cl);</span>
+</pre><h2>Filtering Blog Feeds - the training results (Page 136)<a name="13"></a></h2><p>If you would rather skip the tedious interactive training, you can load the pre-made dataset. The probabilities of various categories given the word 'python' are evenly divided, because this word appears in all entries. The word 'Eric' occurs 25 percent of entries related to Monty Python and doesn't occur at all in other categories. Therefore the probability of 'monty' given 'eric is 100%, while the probability of 'eric' given 'monty' is 25% (well, in the way I classified, it comes out more like 28%).</p><pre class="codeinput">load <span class="string">feedfilter.mat</span>;
+disp(<span class="string">' '</span>)
+format=<span class="string">'Probability (w-&gt;c) of ''python'' in ''prog'' = %f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'python'</span>,<span class="string">'prog'</span>)))
+format=<span class="string">'Probability (w-&gt;c) of ''python'' in ''snake'' = %f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'python'</span>,<span class="string">'snake'</span>)))
+format=<span class="string">'Probability (w-&gt;c) of ''python'' in ''monty'' = %f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'python'</span>,<span class="string">'monty'</span>)))
+format=<span class="string">'Probability (w-&gt;c) of ''eric'' in ''monty'' = %f'</span>;
+disp(sprintf(format,cl.cprob(<span class="string">'eric'</span>,<span class="string">'monty'</span>)))
+format=<span class="string">'Probability (c-&gt;w) of ''eric'' in ''monty'' = %f'</span>;
+disp(sprintf(format,cl.fprob(<span class="string">'eric'</span>,<span class="string">'monty'</span>)))
+clear <span class="string">all</span>;
+</pre><pre class="codeoutput"> 
+Probability (w-&gt;c) of 'python' in 'prog' = 0.305085
+Probability (w-&gt;c) of 'python' in 'snake' = 0.237288
+Probability (w-&gt;c) of 'python' in 'monty' = 0.228814
+Probability (w-&gt;c) of 'eric' in 'monty' = 1.000000
+Probability (c-&gt;w) of 'eric' in 'monty' = 0.285714
+</pre><h2>Improving Feature Detection (Pages 136-138)<a name="14"></a></h2><p>Our 'getwords' function is very simple. It ignores all non-alphabet characters and convert everything into lowercase. There are many ways to improve it:</p><div><ul><li>Use the presence of many uppercase words as a feature without making uppercase words and lowercase words distinct.</li><li>Use set of words in addition to individual words.</li><li>Capture more meta information, such as who sent an email message or what category a blog entry was posted under, and annotate it as meta information.</li><li>Keep URLs and numbers intact.</li></ul></div><p>'entryfeatures' works with RSS feed add those capabilities. 'feedfilter' is also modified to pass a RSS entry as a cell array function rather than as a text string to feature detection if the function name is 'entryfeatures'.</p><pre class="codeinput"><span class="comment">% cl=fisherclassifier(@entryfeatures);</span>
+<span class="comment">% feedfilter(cl);</span>
+</pre><h2>Using Akismet (Pages 138-139)<a name="15"></a></h2><p>Akismet <a href="http://akismet.com/">http://akismet.com/</a> is another web service that provides spam filter function online via its XML-based API. This means that we can take advantage of collective power of online users to fight spam, so that you don't have to train your spam filter on your own.</p><p>It is primarily designed for filtering out spam comments posted on blogs, so it doesn't work for other uses very well. Therefore I am not going to touch it here.</p><p>But this is a good example of how Web 2.0 takes advantage of collective intelligence.</p><h2>Alternative Methods (pages 139-140)<a name="16"></a></h2><p>The book discusses other approaches such as neural network or support vector machines. However, Bayesian approaches we covered here are easier to implement and demand less computing power and resources.</p><p class="footer"><br>
+      Published with MATLAB&reg; 7.13<br></p></div><!--
+##### SOURCE BEGIN #####
+%% Chapter 6: Document Filtering (Page 117)
+% "Programming Collective Intelligence - Building Smart Web 2.0 Applications" 
+% by Toby Segaran (O'Reilly Media, ISBN-10: 0-596-52932-5)
+%
+% This chapter shows how to classify documents based on their contents as 
+% an application of machine learning. A familiar application of such 
+% techniques is spam filtering. This problem began with e-mails, but it has
+% now spread to blogs, message boards, Wiki's, and social networking 
+% sites like MySpace and Facebook in a form of spam posts, comments and 
+% messages. This is the dark side of the Web 2.0.
+%
+% However, the techniques are not limited to spam for application. The
+% algorithms are broad enough to accommodate other applications, because it
+% is about learning to recognize whether a document belongs in one category
+% or another based on its content.
+%
+% In the world of marketing I live in, we also gets a lot of junk leads as
+% we move our lead generation activities to online. We would use online
+% forms to try to gather data, but your target may try to bypass the forms
+% by providing fake data in order to get the fulfillment. It would be very
+% useful to automatically sort out the junk. 
+%
+% In this chapter I will also take advantage of a new MATLAB feature in
+% R2008a called object-oriented programming (OOP).
+
+%% Documents and Words (Page 118)
+%
+% The task of classifying documents requires some kind of features to
+% distinguish one document over another. A feature is anything that you can
+% determine as being either present or absent in the document, and in our
+% case words in documents are the logical choice for such features.
+% Assumption is that frequency of word appearance is different based
+% on document type. For example, certain words are more likely to
+% appear in spam than non-spam. 
+%
+% Of course, features could be word pairs or phrases, or any other higher
+% or lower document structures that can be either present or absent. In 
+% this case, we will focus on words.
+% 
+% 'getwords' function extracts words larger than 2 letters but less than 20
+% into a cell array using regular expression. The text is divided by
+% non-alphabetic character, so this doesn't work with Japanese text. Words
+% are converted to lowercase. 
+%
+% This is not a perfect solution, because spam often uses capitalized
+% letters and non-alphabetic characters for emphasis, and we are not
+% capturing these features in 'getwords'. So we need to leave room for
+% improvement when we write the classification routine by easily
+% substituting with different feature extraction techniques.
+
+test='This is just a test %*$![]';
+disp(['test sample=''' test ''';'])
+disp('Extract features using ''getwords'' function')
+disp(getwords(test))
+clear all;
+
+%% Training the Classifier (Pages 119-121)
+%
+% The classifiers discussed in this chapter learn how to classify a
+% document by being trained. The more examples of documents and their
+% correct classifications it sees, the better the classifier will get at
+% making predictions with increasing certainty.
+%
+% Here, the classifier is implemented as a user-defined MATLAB class,
+% taking advantage of the new feature in R2008a. Classes act as templates.
+% We may want to classify different documents by different criteria, and we
+% can write separate programs for them, but by using template approach, we
+% can use one template that can be used to create individual cases of
+% classifiers for each situation. These individual cases are called
+% 'instances' or 'objects' in OOP. We can create different instances of the
+% classifier class or template and train them differently to have them
+% serve different purposes. 
+%
+% Make sure you use 'handle' superclass declaration in class definition 
+% - this is the key feature that enables self-referencing behavior for your
+% user-defined classes. This key feature is not well documented in MATLAB 
+% documentation, so it took me a while to figure this out.
+%
+% 'classifier' class has 3 built-in properties. 'fc' stands for 'feature
+% count' and it keeps track of different features in different categories
+% of classification. 'cc' stands for 'category count' and it keeps track of
+% how many times each category has been used. The last property,
+% 'getfeatures', store the function handle to a feature-extraction
+% function. Default is '@getwords'. The class also defines the methods you 
+% can use to construct an object or instance, or manipulate it in various 
+% ways. 'train' and 'fcount' are examples of those methods.
+%
+% 'train' method provides the initial training for classifier object by
+% supplying a sample text and its category. 'fcount' gives you the count of
+% given feature in a given category acquired through training.
+
+cl=classifier(); % create an instance or object from 'classifier' class
+text1='the quick brown fox jumps over the lazy dog';
+text2='make quick money in the online casino';
+disp(['training sample1=''' text1 ''';'])
+disp(['training sample2=''' text2 ''';'])
+cl.train(text1,'good'); % train the classifier object 'cl' with sample text.
+cl.train(text2,'bad'); % more training, with a bad example. 
+% the word 'quick appeared once on both, so it should have a count of 1
+% in each category
+disp(' ')
+disp(sprintf('Count of ''quick'' classifed as ''good''=%d',cl.fcount('quick', 'good')))
+disp(sprintf('Count of ''quick'' classifed as ''bad''=%d',cl.fcount('quick', 'bad')))
+
+%% Calculating Probabilities (Pages 121-122)
+%
+% Now that we know how many features a given category has and frequency of
+% each feature, you can now calculate the probability of a word being in a
+% particular category... Pr(word|category). This is implemented as a class
+% method 'fprob'. 
+%
+% We also have to re-train the object as we develop the algorithm, so we
+% should automate the training process - that's what 'sampletrain' does.
+%
+% The sample texts it feeds are:
+%
+% * 'Nobody owns the water.' -> good
+% * 'the quick rabbit jumps fences' ->good
+% * 'buy pharmaceuticals now' -> bad
+% * 'make quick money at the online casino' -> bad
+% * 'the quick brown fox jumps' -> good
+%
+% 'quick' appears 3 times and 2 are good and 1 bad. So the probability of
+% 'quick' appearing in 'good' documents should be 2/3=0.6666666..
+
+disp(' ')
+disp('Reset the ''classifier'' object')
+cl=classifier(); % reset the object by re-creating it.
+sampletrain(cl); % feed the standard training data
+format='Probability of ''quick'' appearing in ''good'' documents=%f';
+disp(sprintf(format,cl.fprob('quick','good')))
+
+%% Starting with a Reasonable Guess (Pages 122-123)
+%
+% 'fprob' gives exact prediction based on training data, but that's also
+% its limitation - its prediction is good only for training data. Its
+% prediction is incredibly sensitive to the training data it received.
+% For example, the word 'money' only appeared once in a bad example, so its
+% probability is 100% for bad documents, 0% for good documents. This is too
+% extreme, because 'money' could be used in good documents as well.
+%
+% To address this issue, we would like to introduce a concept of 'assumed
+% probability' ('ap') that new features take on initially, and then adjusted
+% gradually in training. '0.5' is a good neutral probability to start with.
+% Next thing to think about is how much weight you would like to give to 'ap'.
+% Weight of 1 means it is worth one word in actual samples. The new metric
+% is the weighted average of probability returned from 'fprob' and 'ap'.
+%
+% For the case of 'money', its 'ap' is '0.5' initially for both 'good' and  
+% 'bad'. Then the classifier object finds 1 example of 'money' in a 'bad' 
+% document in the training. So its probability for 'bad' becomes:
+%
+% * (weight x ap + count x fprob)/(count + weight)
+% * = (1x0.5+1*1)/(1+1)
+% * = 0.75
+% 
+% This means that its probability for 'good' will be '0.25'.
+
+disp(' ')
+disp('Reset the ''classifier'' object')
+cl=classifier();
+sampletrain(cl);
+format='Probability of ''money'' appearing in ''good'' documents=%f';
+disp('Run the weighted probability calculation... ')
+disp(' ')
+disp(sprintf(format,cl.weightedprob('money','good',@cl.fprob)))
+disp(' ')
+disp('Repeat the training - this should increase certainty')
+disp(' ')
+sampletrain(cl);
+disp(sprintf(format,cl.weightedprob('money','good',@cl.fprob)))
+
+%% A Naive Classifier - Probability of a Whole Document (Pages 123-124)
+%
+% We now have a way to calculate Pr(word|category), which gives us the 
+% probabilities of a document in a category containing a particular word,
+% but we need a way to combine the individual word probabilities to get the 
+% probability that an entire document belongs in a given category.
+%
+% Here we will implement one approach called a naive Bayesian classifier. 
+% It is called 'naive' because it assumed that the probabilities being
+% combined are independent of each other. In the case of spam, we know that
+% 'money' and 'casino' are much more highly correlated than other
+% combinations, so this is not a good assumption. While we cannot use the
+% probabilities given by a naive Bayesian classifier per se, we can still 
+% use its results relatively for comparison among different categories.
+% Therefore it is still an effective approach in real life despite its flaw
+% in the assumption. 
+%
+% If all features are independent, then we can combine their probabilities
+% by multiplying them together. Let's take an example of words 'MATLAB' and
+% 'Casino', and their probabilities to appear in bad documents are as 
+% follows:
+% 
+% * Pr(matlab|bad)=20%
+% * Pr(casino|bad)=80%
+% 
+% The probability that both 'MATLAB' and 'Casino' should appear in bad
+% documents is 16%. 
+%
+% * Pr(matlab&casino|bad)= 20%x80%=16%
+%
+% So we can get the probabilities for the whole document by multiplying the
+% probabilities of all features contained in the document.
+%
+% We will create a different subclass of 'classifier' to add this
+% capability. This subclass is called 'naivebayes' which implements
+% 'docprob' method.
+%
+% Let's test with some sample data. Please remember that the result won't
+% be exactly 16% because we are using weighted average here. 
+
+disp(' ')
+disp('Reset the object with ''naivebayes''')
+cl=naivebayes();
+disp(' ')
+disp('Training ''naivebayes'' object with 80% good ''MATLAB'' & 80% bad ''Casino''...')
+cl.fc={'matlab','good',80;'matlab','bad',20; 'casino','good',20;'casino','bad',80};
+cl.cc={'good',100;'bad',100};
+format='Probability of ''matlab casino'' as a ''good'' document=%f';
+disp(sprintf(format,cl.docprob('matlab casino','good')))
+
+%% A Quick Introduction to Bayes' Theorem (Pages 125-126)
+%
+% Now that we know how to calculate Pr(document|category), we need to flip
+% it around to get Pr(category|document) in order to classify new
+% documents. That's what Bayes' Theorem is about.
+%
+% * Pr(A|B)=Pr(B|A)xPr(A)/Pr(B)
+%
+% Or, in our case,
+%
+% * Pr(category|document)=Pr(document|category)xPr(category)/Pr(document)
+% 
+% Pr(document|category) is given by 'docprob'. Pr(category) is just the
+% number of documents in the category divided by total number of documents.
+% Pr(document) is irrelevant in our case. Because of the basic flaw in our
+% naive Bayesian approach, we are not going to use resulting probabilities
+% directly. Instead we will calculate probability for each category 
+% separately, and then all the results will be compared. Pr(document) is 
+% the same for each of those separate calculations, so we can safely ignore 
+% this term.
+%
+% 'prob' method calculates the probability of each category and returns the
+% product Pr(document|category) x Pr(category). 
+
+disp(' ')
+disp('Reset the ''naivebayes'' object')
+cl=naivebayes();
+sampletrain(cl);
+format='Probability of ''quick rabbit'' as a ''good'' document=%f';
+disp(sprintf(format,cl.prob('quick rabbit','good')))
+format='Probability of ''quick rabbit'' as a ''bad'' document=%f';
+disp(sprintf(format,cl.prob('quick rabbit','bad')))
+
+%% Choosing a Category (Pages 126-127)
+%
+% The final step in classification is to determine the category a new
+% document belongs in. The simple approach is to assign it to the category
+% with highest probability. However, in reality, this may not be a
+% desirable behavior. You don't want to misplace non-spam as spam just
+% because the probability is marginally higher. So we need to assign a
+% minimum threshold for each category, so that new item can be placed there
+% only when the probability is higher than the next best by a specified
+% threshold. 
+%
+% For example, the threshold for 'bad' could be set to '3', while it could
+% be '1' for 'good'. This means any item with highest 'good' probability,
+% however small the difference may be, will be classified as 'good', while
+% only items with 3 times higher 'bad' probability than others will be 
+% classified as 'bad', and anything inbetween is 'unknown'.
+%
+% We need to modify 'classifier' class to add 'thresholds' property and
+% 'classify' method to implement this approach. The changes will also be 
+% inherited by 'naivebayes' subclass automatically, so you don't have to do
+% anything with that subclass. This is the power of OOP.
+
+disp(' ')
+disp('Reset the ''naivebayes'' object')
+cl=naivebayes();
+sampletrain(cl);
+format='Bayes classify ''quick rabbit''... Category=%s';
+disp(sprintf(format,cl.classify('quick rabbit','unknown')))
+format='Bayes classify ''quick money''... Category=%s';
+disp(sprintf(format,cl.classify('quick money','unknown')))
+disp(' ')
+disp('Set the threshold for ''bad'' to ''3.0''')
+cl.setthreshold('bad',3.0);
+disp(sprintf(format,cl.classify('quick money','unknown')))
+disp(' ')
+disp('Run the ''sampletrain'' 10 times')
+for i=1:10
+    sampletrain(cl);
+end
+disp(sprintf(format,cl.classify('quick money','unknown')))
+clear all;
+
+%% The Fisher Method - Category Probabilities for Features (Pages 127-129)
+%
+% Here we will examine the Fisher Method, named for R.A. Fisher, as an
+% alternative approach in document filtering. This method is used in
+% SpamBayes, an Outlook plugin written in Python, and known to be
+% particularly effective for spam filtering.
+% 
+% In a naive Bayesian approach, we used the feature probabilities to
+% determine the whole document probability. The Fisher Method is more
+% elaborate, but it is worth learning because it offers much greater
+% flexibility.
+%
+% In the Fisher Method, you start by calculating the probability of a
+% document being in a category given the presence of a particular feature -
+% Pr(category|feature). If 'casino' appears in 500 documents and 499 of
+% those are in the 'bad' category, then 'casino' will score very close to 1
+% for 'bad'.
+%
+% * Pr(category|feature)= (number of documents in this category with the
+% feature)/(total number of documents with the feature)
+%
+% However, this formula doesn't account for imbalance of data among
+% different categories. If most of your documents are good except a few bad
+% ones, the features associated with bad ones will score too high for
+% 'bad', even though they may be perfectly legitimate words. So we need to
+% normalize the probability calculation. Required information is: 
+%
+% * clf=Pr(feature|category) for a given category
+% * freqsum = sum of Pr(feature|category) for all the categories
+% * cprob=clf/(clf+nclf)
+%
+% If you run the following code, you will see that 'money' returns 1.0
+% probability for 'bad'. Again, it is too sensitive to the training data. 
+% We should use weighted average approach again with the Fisher Method.
+
+disp(' ')
+disp('Reset the object with ''fisherclassifier''')
+cl=fisherclassifier();
+sampletrain(cl);
+format='Probability of ''quick'' as a ''good'' document=%f';
+disp(sprintf(format,cl.cprob('quick','good')))
+format='Probability of ''money'' as a ''bad'' document=%f';
+disp(sprintf(format,cl.cprob('money','bad')))
+disp(' ')
+disp('Use weighted average rather than cprob directly')
+disp(sprintf(format,cl.weightedprob('money','bad',@cl.cprob)))
+
+%% Combining the Probabilities (Pages 129-130)
+%
+% In our naive Bayesian approach we combined the feature probabilities by 
+% multiplying them to derive an overall document probability. The Fisher
+% Method add rigor to this process by applying additional steps to test the
+% multiplication result.
+%
+% Fisher's research shows that if you take a natural log of the result and
+% multiplying it by -2, then the resulting score should fit a chi-squared
+% distribution if the probabilities are independent and random. We can use
+% this knowledge this way: if a document doesn't belong in a particular 
+% category, its feature probabilities vary randomly for that category.
+% If a document belongs in another category, its feature probabilities
+% should be high in general - no longer random. 
+% 
+% By feeding the result of the Fisher calculation to the inverse chi-square 
+% function, you get the probability that a random set of probabilities 
+% would return such a high number. For further reading, check out:
+% http://www.gigamonkeys.com/book/practical-a-spam-filter.html
+%
+% By the way, I made a small change to 'invchi2' function: 
+%
+% * Python: for i in range(1, df//2)
+% * MATLAB: for i=1:floor(df/2)-1
+%
+% '//' is an integer division operator, an equivalent to 'floor' in MATLAB. 
+% 'range(1,2)' returns '[1]', not [1 2] in Python, however - the second 
+% end-of-range argument is not included in the resulting vector. So I had 
+% to add '-1' in order to make MATLAB version to behave the same as Python 
+% version. I am not sure if this is strictly Kosher from  Statistics point 
+% of view. 
+% 
+% Anyhow, we can see that the Fisher Method is more sophisticated and
+% robust than our naive Bayesian alternative, and therefore it is expected 
+% to perform better.   
+
+disp(' ')
+disp('Reset the ''fisherclassifier'' object')
+cl=fisherclassifier();
+sampletrain(cl);
+format='''cprob'' of ''quick'' as a ''good'' document=%f';
+disp(sprintf(format,cl.cprob('quick','good')))
+format='''fisherprob'' of ''quick rabbit'' as a ''good'' document=%f';
+disp(sprintf(format,cl.fisherprob('quick rabbit','good')))
+format='''fisherprob'' of ''quick rabbit'' as a ''bad'' document=%f';
+disp(sprintf(format,cl.fisherprob('quick rabbit','bad')))
+
+%% Classifying Items (Pages 130-131)
+%
+% Because 'fisherprob' returns a probability value pre-qualified by inverse
+% chi-square function, we can use it directly in classification, rather
+% than having multiplication thresholds like our naive Bayesian classifier.
+% Instead, we will specify the minimums for each classification. For a
+% spam filter, you may want to set this minimum high for 'bad', such as '0.6', 
+% while the minimum for 'good' can be as low as '0.2', in order to avoid
+% accidental misplacement of good e-mails in the 'bad' category. Anything
+% lower than the minimums will be classified as 'unknown'.
+% 
+% The result we will see may be not much different from the output of our 
+% naive Bayesian classifier, because of the small training dataset, but The
+% Fisher Method is believed to outperform in real world situations. 
+
+disp(' ')
+disp('Reset the ''fisherclassifier'' object')
+cl=fisherclassifier();
+sampletrain(cl);
+format='Fisher classify ''quick rabbit''... Category=%s';
+disp(sprintf(format,cl.classify('quick rabbit','unknown')))
+format='Fisher classify ''quick money''... Category=%s';
+disp(sprintf(format,cl.classify('quick money','unknown')))
+disp(' ')
+disp('Set the minumum for ''bad'' to ''0.8''')
+cl.setminimum('bad',0.8);
+disp(sprintf(format,cl.classify('quick money','unknown')))
+disp(' ')
+disp('Set the minumum for ''good'' to ''0.4''')
+cl.setminimum('good',0.4);
+disp(sprintf(format,cl.classify('quick money','unknown')))
+
+%% Persisting the Trained Classifiers (Pages 132-133)
+%
+% The book covers the process of adapting the 'classifier' class to work
+% with SQLite light-weight, serverless database. Python 2.5 or later comes
+% with SQlite built-in. It is used widely in desktop applications as well
+% as small embedded applications. See http://www.sqlite.org/ for more
+% information. 
+%
+% So far, the classifiers we created need to be trained each time before
+% you can use them, and you need to repeat this process each time you start
+% up a session in MATLAB, because we haven't provided a way to persist the
+% data or object. In MATLAB, you can actually save the whole classifier
+% objects in .mat file. Python doesn't provide such functionality built-in,
+% so it makes sense to provide native support to SQLite precisely for this
+% reason. 
+% 
+% There is a nice library called 
+% <http://mksqlite.berlios.de/mksqlite_eng.html mksqlite> that connects
+% MATLAB to SQLite.
+% "classifer2.m" shows the modified classifier that uses mksqlite to
+% persist the trained object.
+%
+% Here is the simple script to test the modified classifier. 
+
+% text1='the quick brown fox jumps over the lazy dog';
+% text2='make quick money in the online casino';
+%
+% cl=classifier2();
+% cl.setdb('test1.db');
+% cl.train(text1, 'good');
+% cl.train(text2, 'bad');
+%
+% disp(sprintf('Count of ''quick'' classified as ''good''=%d', cl.fcount('quick', 'good')))
+% disp(sprintf('Count of ''quick'' classified as ''bad''=%d,   cl.fcount('quick', 'bad')))
+% mksqlite(cl.con, 'close');
+%
+% clear all
+
+%% Filtering Blog Feeds - interactive training (Pages 134-135)
+%
+% As a non-spam related application of the classifiers we created, the book
+% introduces a program that filters RSS feeds from various blogs. RSS was
+% one of the important drivers for Web 2.0, but it now floods the
+% cyberspace, overwhelming people with too much information to process.
+%
+% It takes advantage of a RSS parsing library called 'Universal Feed
+% Parser' to build the documents to feed to the classifier, present the
+% text to the user with a guess, then asks for a user input for correct
+% answer. You can pick from multiple categories beyond 'good' or 'bad'.
+% This user input is then used for training. 
+%
+% Since there is no 'Universal Feed Parser' for MATLAB, I wrote a very
+% simple code inside 'feedfilter' function. It only works with the sample
+% XML file provided here 'python_search.xml' or any RSS feed that follows
+% its format exactly. It doesn't work with other RSS feed formats. 
+%
+% I improved the usability a bit - you can simply accept a guess by hitting
+% return without entering text. You can also end the session by entering
+% 'end' at the prompt at any time. As you go through the training, you will
+% notice that the guesses get better and better. 
+
+% Test 'feedfilter' function 
+% cl=fisherclassifier();
+% feedfilter(cl);
+
+%% Filtering Blog Feeds - the training results (Page 136)
+%
+% If you would rather skip the tedious interactive training, you can load
+% the pre-made dataset. The probabilities of various categories given the
+% word 'python' are evenly divided, because this word appears in all
+% entries. The word 'Eric' occurs 25 percent of entries related to Monty
+% Python and doesn't occur at all in other categories. Therefore the
+% probability of 'monty' given 'eric is 100%, while the probability of
+% 'eric' given 'monty' is 25% (well, in the way I classified, it comes out 
+% more like 28%). 
+
+load feedfilter.mat;
+disp(' ')
+format='Probability (w->c) of ''python'' in ''prog'' = %f';
+disp(sprintf(format,cl.cprob('python','prog')))
+format='Probability (w->c) of ''python'' in ''snake'' = %f';
+disp(sprintf(format,cl.cprob('python','snake')))
+format='Probability (w->c) of ''python'' in ''monty'' = %f';
+disp(sprintf(format,cl.cprob('python','monty')))
+format='Probability (w->c) of ''eric'' in ''monty'' = %f';
+disp(sprintf(format,cl.cprob('eric','monty')))
+format='Probability (c->w) of ''eric'' in ''monty'' = %f';
+disp(sprintf(format,cl.fprob('eric','monty')))
+clear all;
+
+%% Improving Feature Detection (Pages 136-138)
+%
+% Our 'getwords' function is very simple. It ignores all non-alphabet
+% characters and convert everything into lowercase. There are many ways to
+% improve it:
+%
+% * Use the presence of many uppercase words as a feature without making
+% uppercase words and lowercase words distinct.
+% * Use set of words in addition to individual words.
+% * Capture more meta information, such as who sent an email message or what
+% category a blog entry was posted under, and annotate it as
+% meta information.
+% * Keep URLs and numbers intact.
+%
+% 'entryfeatures' works with RSS feed add those capabilities. 'feedfilter'
+% is also modified to pass a RSS entry as a cell array function rather than
+% as a text string to feature detection if the function name is
+% 'entryfeatures'. 
+
+% cl=fisherclassifier(@entryfeatures);
+% feedfilter(cl);
+
+%% Using Akismet (Pages 138-139)
+%
+% Akismet http://akismet.com/ is another web service that provides spam 
+% filter function online via its XML-based API. This means that we can take
+% advantage of collective power of online users to fight spam, so that you
+% don't have to train your spam filter on your own.
+% 
+% It is primarily designed for filtering out spam comments posted on blogs,
+% so it doesn't work for other uses very well. Therefore I am not going to
+% touch it here. 
+%
+% But this is a good example of how Web 2.0 takes advantage of collective
+% intelligence. 
+
+%% Alternative Methods (pages 139-140)
+%
+% The book discusses other approaches such as neural network or support
+% vector machines. However, Bayesian approaches we covered here are easier
+% to implement and demand less computing power and resources.
+
+
+
+
+##### SOURCE END #####
+--></body></html>
